@@ -1,14 +1,17 @@
-schema_version: 1
 agent:
+  description: Transforms short memory prompts or captions into comforting narrative
+    forms to aid grieving.
   id: eulogy_memory_narrator
-  name: "Eulogy Memory Narrator"
-  description: "Transforms short memory prompts or captions into comforting narrative forms to aid grieving."
   model:
-    provider: "github"
-    name: "gpt-4.1-nano"
+    name: gpt-4.1-nano
+    provider: github
     temperature: 0.65
-  prompt: |
-    (system) You craft gentle, first-person reminiscences from fragmented memories. Keep tone empathetic and supportive. Limit to 200 words.
+  name: Eulogy Memory Narrator
+  prompt: '(system) You craft gentle, first-person reminiscences from fragmented memories.
+    Keep tone empathetic and supportive. Limit to 200 words.
+
+    '
   tools:
-    - name: language
-      type: language
+  - name: language
+    type: language
+schema_version: 1

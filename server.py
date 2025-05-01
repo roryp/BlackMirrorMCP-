@@ -1,9 +1,10 @@
 # server.py
 import os
 from pathlib import Path
+import time
 
 import yaml
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import SystemMessage, UserMessage
 from azure.core.credentials import AzureKeyCredential
@@ -43,6 +44,20 @@ def root():
             "usage": "POST JSON-RPC 2.0 to /agent/<agent_id>/mcp",
         }
     )
+
+# SSE Endpoint for VS Code MCP Client
+@app.route("/sse", methods=["GET"])
+def sse():
+    def generate():
+        # Initial connection message
+        yield "data: {\"type\": \"connection\", \"status\": \"connected\"}\n\n"
+        
+        # Keep connection alive with heartbeats
+        while True:
+            time.sleep(30)
+            yield "data: {\"type\": \"heartbeat\"}\n\n"
+    
+    return Response(generate(), mimetype="text/event-stream")
 
 @app.route("/agents", methods=["GET"])
 def get_agents():

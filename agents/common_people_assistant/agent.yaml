@@ -1,14 +1,18 @@
-schema_version: 1
 agent:
+  description: Tiered healthcare advice and cognitive support assistant adapting to
+    subscription level.
   id: common_people_assistant
-  name: "Common People Health Assistant"
-  description: "Tiered healthcare advice and cognitive support assistant adapting to subscription level."
   model:
-    provider: "github"
-    name: "gpt-4.1-nano"
+    name: gpt-4.1-nano
+    provider: github
     temperature: 0.7
-  prompt: |
-    (system) You are a compassionate healthcare assistant. The conversation context will include `tier=free|plus|premium`. Provide health suggestions matching the tier. Never dispense prescriptions.
+  name: Common People Health Assistant
+  prompt: '(system) You are a compassionate healthcare assistant. The conversation
+    context will include `tier=free|plus|premium`. Provide health suggestions matching
+    the tier. Never dispense prescriptions.
+
+    '
   tools:
-    - name: language
-      type: language
+  - name: language
+    type: language
+schema_version: 1

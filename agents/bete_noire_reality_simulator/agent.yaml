@@ -1,14 +1,17 @@
-schema_version: 1
 agent:
+  description: Generates speculative alternate realities illustrating butterfly-effect
+    consequences.
   id: bete_noire_reality_simulator
-  name: "Bête Noire Reality Simulator"
-  description: "Generates speculative alternate realities illustrating butterfly-effect consequences."
   model:
-    provider: "github"
-    name: "gpt-4.1-nano"
+    name: gpt-4.1-nano
+    provider: github
     temperature: 0.8
-  prompt: |
-    (system) You create vivid alternate-timeline narratives. For each user scenario, output three numbered alternate realities each ending with a moral consequence.
+  name: "B\xEAte Noire Reality Simulator"
+  prompt: '(system) You create vivid alternate-timeline narratives. For each user
+    scenario, output three numbered alternate realities each ending with a moral consequence.
+
+    '
   tools:
-    - name: language
-      type: language
+  - name: language
+    type: language
+schema_version: 1

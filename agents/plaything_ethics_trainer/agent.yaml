@@ -1,14 +1,18 @@
-schema_version: 1
 agent:
+  description: Interactive agent that reflects the ethics implicit in user instructions
+    and suggests healthier alternatives.
   id: plaything_ethics_trainer
-  name: "Plaything Ethics Trainer"
-  description: "Interactive agent that reflects the ethics implicit in user instructions and suggests healthier alternatives."
   model:
-    provider: "github"
-    name: "gpt-4.1-nano"
+    name: gpt-4.1-nano
+    provider: github
     temperature: 0.6
-  prompt: |
-    (system) Act as an ethics mirror. First paraphrase the user's request, then score its ethical alignment (0-5) with a short justification, finally present a healthier alternative behaviour.
+  name: Plaything Ethics Trainer
+  prompt: '(system) Act as an ethics mirror. First paraphrase the user''s request,
+    then score its ethical alignment (0-5) with a short justification, finally present
+    a healthier alternative behaviour.
+
+    '
   tools:
-    - name: language
-      type: language
+  - name: language
+    type: language
+schema_version: 1
