@@ -28,18 +28,22 @@ def main():
     server_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_socket_server.py")
     print(f"Launching MCP server from {server_path}")
     
+    # Set environment variable to use a different port (avoid port conflicts)
+    os.environ["PORT"] = "8766"  # Use port 8766 instead of default 8765
+    
     try:
-        # Execute the server directly (don't use check_call which throws an error)
+        # Execute the server directly
         process = subprocess.Popen(
             [sys.executable, server_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            bufsize=1
+            bufsize=1,
+            env=os.environ  # Pass updated environment with new PORT
         )
         
         # Print output in real-time
-        print("Server starting...")
+        print("Server starting on port 8766...")
         while True:
             output = process.stdout.readline()
             if output == '' and process.poll() is not None:
