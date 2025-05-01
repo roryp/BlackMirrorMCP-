@@ -2,6 +2,8 @@
 import os
 from pathlib import Path
 import time
+import json
+import uuid
 
 import yaml
 from flask import Flask, request, jsonify, Response
@@ -13,6 +15,9 @@ from azure.core.credentials import AzureKeyCredential
 from mcp.types import JSONRPCRequest, JSONRPCResponse
 
 app = Flask(__name__)
+
+# Global message queue for SSE events
+message_queue = []
 
 # ---------------------------------------------------------------------
 # Helper – load every agents/<name>/agent.yaml into a dict
@@ -49,15 +54,47 @@ def root():
 @app.route("/sse", methods=["GET"])
 def sse():
     def generate():
-        # Initial connection message
-        yield "data: {\"type\": \"connection\", \"status\": \"connected\"}\n\n"
+        # Send initial connection message
+        yield "event: connection\ndata: {\"status\": \"connected\"}\n\n"
         
-        # Keep connection alive with heartbeats
-        while True:
-            time.sleep(30)
-            yield "data: {\"type\": \"heartbeat\"}\n\n"
+        # Send capabilities message to properly identify as MCP server
+        yield "event: capabilities\ndata: {\"clientIds\": true, \"agents\": true, \"lsp\": true}\n\n"
+        
+        # Send agents available
+        agent_list = [
+            {
+                "id": aid,
+                "name": cfg["agent"]["name"],
+                "description": cfg["agent"]["description"],
+            }
+            for aid, cfg in agents.items()
+        ]
+        yield f"event: agents\ndata: {json.dumps(agent_list)}\n\n"
+        
+        # Process any queued messages
+        while len(message_queue) > 0:
+            msg = message_queue.pop(0)
+            yield f"event: message\ndata: {json.dumps(msg)}\n\n"
+        
+        # Keep connection alive with heartbeats and handle message queue
+        last_id = 0
+        try:
+            while True:
+                # Send any new messages that have been queued
+                while len(message_queue) > 0:
+                    msg = message_queue.pop(0)
+                    yield f"event: message\ndata: {json.dumps(msg)}\n\n"
+                
+                time.sleep(1)
+                yield "event: heartbeat\ndata: {}\n\n"
+        except GeneratorExit:
+            pass
     
-    return Response(generate(), mimetype="text/event-stream")
+    return Response(generate(), mimetype="text/event-stream", headers={
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no'
+    })
 
 @app.route("/agents", methods=["GET"])
 def get_agents():
@@ -71,6 +108,159 @@ def get_agents():
             for aid, cfg in agents.items()
         ]
     )
+
+# MCP Language Server Protocol endpoint
+@app.route("/mcp", methods=["POST"])
+def handle_lsp():
+    try:
+        request_data = request.json
+        print(f"Received LSP request: {request_data}")
+        
+        method = request_data.get("method")
+        request_id = request_data.get("id")
+        
+        # Handle initialize request
+        if method == "initialize":
+            response = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "capabilities": {
+                        "textDocumentSync": 1,  # Full sync
+                        "completionProvider": {
+                            "resolveProvider": False,
+                            "triggerCharacters": ["."]
+                        },
+                        "mcpAgentProvider": True
+                    },
+                    "serverInfo": {
+                        "name": "BlackMirrorMCP",
+                        "version": "1.0.0"
+                    }
+                }
+            }
+            message_queue.append(response)
+            return jsonify(response)
+        
+        # Handle initialized notification
+        elif method == "initialized":
+            # No response needed for notifications
+            return jsonify({"jsonrpc": "2.0", "result": None})
+        
+        # Handle mcp/getAgents request
+        elif method == "mcp/getAgents":
+            agent_list = [
+                {
+                    "id": aid,
+                    "name": cfg["agent"]["name"],
+                    "description": cfg["agent"]["description"],
+                }
+                for aid, cfg in agents.items()
+            ]
+            response = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": agent_list
+            }
+            message_queue.append(response)
+            return jsonify(response)
+        
+        # Handle mcp/chat request
+        elif method == "mcp/chat":
+            params = request_data.get("params", {})
+            agent_id = params.get("agentId")
+            
+            if agent_id not in agents:
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32602,
+                        "message": f"Agent '{agent_id}' not found"
+                    }
+                }
+                message_queue.append(error_response)
+                return jsonify(error_response)
+            
+            # Process chat request
+            try:
+                agent_cfg = agents[agent_id]
+                system_prompt = agent_cfg["agent"]["prompt"].split("(system)", 1)[-1].strip()
+                model_name = agent_cfg["agent"]["model"]["name"]
+                temperature = agent_cfg["agent"]["model"].get("temperature", 0.7)
+                
+                # GitHub hosted models client using Azure AI Inference SDK
+                endpoint = "https://models.github.ai/inference"
+                token = os.getenv("GITHUB_TOKEN")
+                
+                client = ChatCompletionsClient(
+                    endpoint=endpoint,
+                    credential=AzureKeyCredential(token),
+                )
+                
+                # Convert messages to Azure AI Inference format
+                messages = [SystemMessage(system_prompt)]
+                for m in params.get("messages", []):
+                    if m["role"] == "user":
+                        messages.append(UserMessage(m["content"]))
+                    elif m["role"] == "assistant":
+                        from azure.ai.inference.models import AssistantMessage
+                        messages.append(AssistantMessage(m["content"]))
+                
+                completion = client.complete(
+                    messages=messages,
+                    temperature=temperature,
+                    top_p=1.0,
+                    model=model_name
+                )
+                
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "role": "assistant",
+                        "content": completion.choices[0].message.content,
+                    }
+                }
+                message_queue.append(response)
+                return jsonify(response)
+            
+            except Exception as exc:
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32603,
+                        "message": f"Error processing chat request: {str(exc)}"
+                    }
+                }
+                message_queue.append(error_response)
+                return jsonify(error_response)
+        
+        # Handle unknown methods
+        else:
+            error_response = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32601,
+                    "message": f"Method '{method}' not found"
+                }
+            }
+            message_queue.append(error_response)
+            return jsonify(error_response)
+    
+    except Exception as e:
+        error_response = {
+            "jsonrpc": "2.0",
+            "id": request.json.get("id", None),
+            "error": {
+                "code": -32603,
+                "message": f"Internal server error: {str(e)}"
+            }
+        }
+        message_queue.append(error_response)
+        return jsonify(error_response)
 
 # ---------------------------------------------------------------------
 # Core: handle an MCP JSON-RPC request and proxy it to an LLM
