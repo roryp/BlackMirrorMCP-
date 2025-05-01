@@ -1,0 +1,4 @@
+azure-mcp-cli>=0.11
+pytest>=8.2
+pyyaml>=6.0
+python-dotenv>=1.0
