@@ -9,7 +9,15 @@ import uuid
 from pathlib import Path
 
 import yaml
-import websockets
+try:
+    # Handle different versions of websockets
+    import websockets
+    from websockets.server import serve
+except ImportError:
+    # Try alternate import pattern for older versions
+    import websockets
+    from websockets import serve
+
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import SystemMessage, UserMessage, AssistantMessage
 from azure.core.credentials import AzureKeyCredential
@@ -89,7 +97,7 @@ async def get_completion(agent_id, messages):
 agents = load_agents()
 logger.info(f"Loaded {len(agents)} agents: {', '.join(agents.keys())}")
 
-async def handle_request(websocket, path):
+async def handle_request(websocket, path=None):
     """Handle a WebSocket connection for JSON-RPC requests."""
     client_id = str(uuid.uuid4())
     connected_clients.add(websocket)
@@ -112,6 +120,7 @@ async def handle_request(websocket, path):
                 
                 # Handle initialize request
                 if method == "initialize":
+                    logger.info(f"Processing initialize request with id: {request_id}")
                     response = {
                         "jsonrpc": "2.0",
                         "id": request_id,
@@ -131,28 +140,34 @@ async def handle_request(websocket, path):
                         }
                     }
                     await websocket.send(json.dumps(response))
+                    logger.info("Sent initialize response")
                 
                 # Handle initialized notification
                 elif method == "initialized":
+                    logger.info("Received initialized notification")
                     # No response needed for notifications
                     pass
                 
                 # Handle shutdown request
                 elif method == "shutdown":
+                    logger.info(f"Processing shutdown request with id: {request_id}")
                     response = {
                         "jsonrpc": "2.0",
                         "id": request_id,
                         "result": None
                     }
                     await websocket.send(json.dumps(response))
+                    logger.info("Sent shutdown response")
                 
                 # Handle exit notification
                 elif method == "exit":
+                    logger.info("Received exit notification")
                     # No response needed for notifications
                     break
                 
                 # Handle mcp/getAgents request
                 elif method == "mcp/getAgents":
+                    logger.info(f"Processing getAgents request with id: {request_id}")
                     agent_list = [
                         {
                             "id": aid,
@@ -167,12 +182,15 @@ async def handle_request(websocket, path):
                         "result": agent_list
                     }
                     await websocket.send(json.dumps(response))
+                    logger.info(f"Sent getAgents response with {len(agent_list)} agents")
                 
                 # Handle mcp/chat request
                 elif method == "mcp/chat":
                     agent_id = params.get("agentId")
                     conversation_id = params.get("conversationId", str(uuid.uuid4()))
                     messages = params.get("messages", [])
+                    
+                    logger.info(f"Processing chat request for agent: {agent_id}, conversation: {conversation_id}")
                     
                     if agent_id not in agents:
                         error_response = {
@@ -184,6 +202,7 @@ async def handle_request(websocket, path):
                             }
                         }
                         await websocket.send(json.dumps(error_response))
+                        logger.error(f"Agent not found: {agent_id}")
                         continue
                     
                     # Store conversation
@@ -209,7 +228,9 @@ async def handle_request(websocket, path):
                             }
                         }
                         await websocket.send(json.dumps(response))
+                        logger.info(f"Sent chat response for agent: {agent_id}")
                     except Exception as e:
+                        logger.error(f"Error processing chat: {str(e)}")
                         error_response = {
                             "jsonrpc": "2.0",
                             "id": request_id,
@@ -222,6 +243,7 @@ async def handle_request(websocket, path):
                 
                 # Handle unknown methods
                 else:
+                    logger.warning(f"Unknown method received: {method}")
                     error_response = {
                         "jsonrpc": "2.0",
                         "id": request_id,
@@ -266,11 +288,26 @@ async def handle_request(websocket, path):
 
 async def main():
     """Start the WebSocket server."""
-    port = int(os.getenv("PORT", "8765"))
-    server = await websockets.serve(handle_request, "0.0.0.0", port)
-    logger.info(f"MCP WebSocket server started on port {port}")
-    logger.info(f"Available agents: {', '.join(agents.keys())}")
-    await server.wait_closed()
+    try:
+        port = int(os.getenv("PORT", "8765"))
+        logger.info(f"Starting WebSocket server on port {port}...")
+        
+        try:
+            # Try using the newer API
+            server = await serve(handle_request, "0.0.0.0", port)
+            logger.info(f"MCP WebSocket server started on port {port}")
+            logger.info(f"Available agents: {', '.join(agents.keys())}")
+            await server.wait_closed()
+        except (TypeError, AttributeError):
+            # Fall back to older API if needed
+            logger.info("Falling back to older websockets API...")
+            server = await websockets.serve(handle_request, "0.0.0.0", port)
+            logger.info(f"MCP WebSocket server started on port {port}")
+            logger.info(f"Available agents: {', '.join(agents.keys())}")
+            await asyncio.Future()  # Keep the server running forever
+    except Exception as e:
+        logger.error(f"Failed to start server: {e}")
+        raise
 
 if __name__ == "__main__":
     try:
