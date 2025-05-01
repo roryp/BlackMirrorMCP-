@@ -1,56 +1,47 @@
-# Black Mirror MCP Agents
+# Black Mirror Agents Docker Usage
 
-This repository contains **six ready-to-run MCP agents** inspired by *Black Mirror* Season 7, wired for the lightweight **`gpt-4.1-nano`** model hosted from GitHub runners.
+This Dockerfile sets up a simple Flask server that serves all the Black Mirror-inspired agents through a REST API
 
-## 🗂 Repo layout
-```
-.
-├── black_mirror_mcp_agents.py
-├── <agent-id>/agent.yaml       # generated after running the helper
-└── README.md
-```
+## Building the Docker Image
 
-## ⚙️ Prerequisites
-
-| Requirement            | Tested Version | Notes                                   |
-|------------------------|---------------|-----------------------------------------|
-| Python                 | 3.10 – 3.12   | `venv` or `pyenv` recommended           |
-| GitHub Personal Token  | PAT with `packages:read` scope | Set via `GITHUB_TOKEN` or `MCP_GITHUB_TOKEN` |
-| Azure Developer CLI    | ≥ 0.11        | (`azd`) for Azure MCP deployments       |
-| GitHub MCP extension¹  | latest        | optional – run agents locally           |
-| Docker (optional)      | ≥ 24.0        | required only for containerised runs    |
-
-¹ Install with `azd extension add mcp`.
-
-## 📦 Install dependencies
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -U pip
-pip install -r requirements.txt
+docker build -t black-mirror-agents .
 ```
 
-*requirements.txt*
-```
-azure-mcp-cli>=0.11
-pytest>=8.2
-pyyaml>=6.0
-python-dotenv>=1.0
-```
+## Running the Container
 
-## 🚀 Quick Start
+Run the container with your GitHub token:
+
 ```bash
-export GITHUB_TOKEN="ghp_XXXXXXXXXXXXXXXXXXXXXXXX"
-
-python black_mirror_mcp_agents.py ./agents
-pytest -q
-cd agents/common_people_assistant
-mcp run
+docker run -p 8000:8000 -e GITHUB_TOKEN=your_github_token black-mirror-agents
 ```
 
-## ☁️ Deploy to Azure MCP
-```bash
-az login
-cd agents/bete_noire_reality_simulator
-azd up
-```
+## Using the Agents
+
+Once the container is running, you can:
+
+1. **List all available agents**:
+   ```
+   GET http://localhost:8000/
+   ```
+
+2. **Interact with a specific agent**:
+   ```
+   POST http://localhost:8000/agent/common_people_assistant
+   Content-Type: application/json
+   
+   {
+     "message": "Your message to the agent"
+   }
+   ```
+
+## Available Agents
+
+- **common_people_assistant**: Tiered healthcare advice assistant
+- **bete_noire_reality_simulator**: Generates alternate-timeline narratives
+- **hotel_reverie_film_remixer**: Rewrites classic film scripts
+- **plaything_ethics_trainer**: Ethics reflection assistant
+- **eulogy_memory_narrator**: Transforms memories into narratives
+- **uss_callister_infinity_clone**: Digital starship clone roleplay
+
+Each agent provides unique responses based on its specialized prompt and character.

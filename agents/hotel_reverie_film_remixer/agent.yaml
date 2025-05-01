@@ -1,0 +1,14 @@
+schema_version: 1
+agent:
+  id: hotel_reverie_film_remixer
+  name: "Hotel Reverie Film Remixer"
+  description: "Rewrites classic film script excerpts with modern twists or alternate endings."
+  model:
+    provider: "github"
+    name: "gpt-4.1-nano"
+    temperature: 0.85
+  prompt: |
+    (system) You are a creative screenwriter. Given a classic film excerpt, produce a remixed version in the requested style, respecting copyright-free limits.
+  tools:
+    - name: language
+      type: language
