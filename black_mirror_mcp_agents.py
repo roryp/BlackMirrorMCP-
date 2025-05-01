@@ -14,6 +14,7 @@ Episode → Agent mapping
 
 from __future__ import annotations
 from pathlib import Path
+import traceback
 
 AGENT_MANIFESTS_YAML = """---
 schema_version: 1
@@ -111,21 +112,37 @@ def write_agent_files(base: Path | str = ".") -> None:
     """Explode AGENT_MANIFESTS_YAML into <agent-id>/agent.yaml files."""
     import yaml
     base_dir = Path(base)
-    for block in AGENT_MANIFESTS_YAML.split('---'):
-        block = block.strip()
-        if not block:
-            continue
-        agent_id = None
-        for line in block.splitlines():
-            if line.strip().startswith('id:'):
-                agent_id = line.split(':', 1)[1].strip()
-                break
-        if not agent_id:
-            continue
-        agent_path = base_dir / "agents" / agent_id
-        agent_path.mkdir(parents=True, exist_ok=True)
-        (agent_path / 'agent.yaml').write_text(block + "\n")
-        print(f"✔︎ wrote {agent_path / 'agent.yaml'}")
+    try:
+        for i, block in enumerate(AGENT_MANIFESTS_YAML.split('---')):
+            block = block.strip()
+            if not block:
+                continue
+            
+            # Parse the block to get the agent_id
+            try:
+                print(f"Processing block {i+1}...")
+                yaml_data = yaml.safe_load(block)
+                if not yaml_data or 'agent' not in yaml_data or 'id' not in yaml_data['agent']:
+                    print(f"Skipping block {i+1} - missing agent id")
+                    continue
+                agent_id = yaml_data['agent']['id']
+                
+                # Create agent directory and write the file
+                agent_path = base_dir / "agents" / agent_id
+                agent_path.mkdir(parents=True, exist_ok=True)
+                
+                # Write the properly formatted YAML
+                with open(agent_path / 'agent.yaml', 'w', encoding='utf-8') as f:
+                    yaml.dump(yaml_data, f, default_flow_style=False)
+                
+                print(f"✔︎ wrote {agent_path / 'agent.yaml'}")
+            except Exception as e:
+                print(f"Error processing block {i+1}: {e}")
+                print(f"Block content: {block[:100]}...")
+                continue
+    except Exception as e:
+        print(f"General error in write_agent_files: {e}")
+        traceback.print_exc()
 
 def _load_yaml_docs():
     import yaml

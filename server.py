@@ -20,8 +20,14 @@ def load_agents() -> dict[str, dict]:
     agents_dir = Path(__file__).parent / "agents"
     agents: dict[str, dict] = {}
     for path in agents_dir.glob("*/agent.yaml"):
-        with open(path, "r", encoding="utf-8") as f:
-            agents[path.parent.name] = yaml.safe_load(f)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+                agents[path.parent.name] = yaml.safe_load(content)
+        except Exception as e:
+            print(f"Error loading agent from {path}: {e}")
+            # Continue loading other agents even if one fails
+            continue
     return agents
 
 agents = load_agents()
