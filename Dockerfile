@@ -14,7 +14,6 @@ EXPOSE 8000
 
 # Set environment variables (will be overridden at runtime)
 ENV GITHUB_TOKEN=""
-ENV MCP_GITHUB_TOKEN=""
 
 # Run the Flask server
 CMD ["python", "/app/server.py"]

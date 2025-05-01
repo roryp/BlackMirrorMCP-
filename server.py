@@ -4,10 +4,12 @@ from pathlib import Path
 
 import yaml
 from flask import Flask, request, jsonify
-from openai import OpenAI
+from azure.ai.inference import ChatCompletionsClient
+from azure.ai.inference.models import SystemMessage, UserMessage
+from azure.core.credentials import AzureKeyCredential
 
 # ✅ Modern MCP bindings (pip install "mcp[cli]")
-from mcp.types import JSONRPCRequest, JSONRPCResponse  # <— replaces the old MCPRequest/MCPResponse
+from mcp.types import JSONRPCRequest, JSONRPCResponse
 
 app = Flask(__name__)
 
@@ -52,12 +54,16 @@ def get_agents():
 # ---------------------------------------------------------------------
 # Core: handle an MCP JSON-RPC request and proxy it to an LLM
 # ---------------------------------------------------------------------
-def _to_openai_messages(system_prompt: str, rpc: JSONRPCRequest) -> list[dict]:
-    """Convert MCP chat params → OpenAI chat format."""
-    msgs = [{"role": "system", "content": system_prompt}]
+def _to_chat_messages(system_prompt: str, rpc: JSONRPCRequest):
+    """Convert MCP chat params → Azure AI Inference chat message format."""
+    messages = [SystemMessage(system_prompt)]
     for m in (rpc.params or {}).get("messages", []):
-        msgs.append({"role": m["role"], "content": m["content"]})
-    return msgs
+        if m["role"] == "user":
+            messages.append(UserMessage(m["content"]))
+        elif m["role"] == "assistant":
+            from azure.ai.inference.models import AssistantMessage
+            messages.append(AssistantMessage(m["content"]))
+    return messages
 
 @app.route("/agent/<agent_id>/mcp", methods=["POST"])
 def handle_mcp(agent_id: str):
@@ -72,18 +78,24 @@ def handle_mcp(agent_id: str):
 
     agent_cfg = agents[agent_id]
     system_prompt = agent_cfg["agent"]["prompt"].split("(system)", 1)[-1].strip()
+    model_name = agent_cfg["agent"]["model"]["name"]
+    temperature = agent_cfg["agent"]["model"].get("temperature", 0.7)
 
-    # OpenAI-compatible client (GitHub-hosted LLMs, OpenRouter, Ollama proxy…)
-    client = OpenAI(
-        api_key=os.getenv("GITHUB_TOKEN") or os.getenv("OPENAI_API_KEY"),
-        base_url=os.getenv("OPENAI_BASE_URL", "https://api.github.com/llm/v1"),
+    # GitHub hosted models client using Azure AI Inference SDK
+    endpoint = "https://models.github.ai/inference"
+    token = os.getenv("GITHUB_TOKEN")
+    
+    client = ChatCompletionsClient(
+        endpoint=endpoint,
+        credential=AzureKeyCredential(token),
     )
 
     try:
-        completion = client.chat.completions.create(
-            model=agent_cfg["agent"]["model"]["name"],
-            messages=_to_openai_messages(system_prompt, rpc),
-            temperature=agent_cfg["agent"]["model"].get("temperature", 0.7),
+        completion = client.complete(
+            messages=_to_chat_messages(system_prompt, rpc),
+            temperature=temperature,
+            top_p=1.0,
+            model=model_name
         )
 
         result = JSONRPCResponse(
